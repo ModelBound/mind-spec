@@ -35,7 +35,13 @@ You get:
 
 Point any LLM at the folder and it can start working.
 
-## Design principles
+New in **spec 0.2**: default scope constraints (max 5 files / 250 LOC / 1 feature), `<task-split>` stop condition, skill review lifecycle, and trust scanner **h5**. See [`SPEC.md`](./SPEC.md) §10–11.
+
+## Migration from 0.1
+
+1. Bump `INDEX.md` frontmatter to `version: 0.2`.
+2. Add `.modelbound/task-budgets.json` (created automatically by `mind init` in mind-cli 0.2+).
+3. Add scope blocks and `review:` frontmatter to skills; run `mind review approve` after human review.
 
 1. **Human-readable first.** A non-technical user should understand a `.mind/` folder after five minutes of reading.
 2. **Git-native.** Every change is a commit. `git log` is provenance.
