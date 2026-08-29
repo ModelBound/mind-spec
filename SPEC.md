@@ -89,6 +89,7 @@ Alice writes TypeScript for frontend work and prefers explicit return types on p
 | `reviewed_at` | Last human review date |
 | `replaces` | Path of a previous file this supersedes |
 | `trust` | `human-reviewed` freezes confidence at 1.0 until explicitly changed |
+| `review` | Skill review lifecycle metadata (see §12) |
 
 Unknown frontmatter keys MUST be preserved and passed through by tooling.
 
@@ -148,7 +149,7 @@ Git history is the audit log.
 
 ## 8. Versioning
 
-The spec version lives in `INDEX.md` frontmatter (`version: 0.1`). Minor versions are additive. Major versions require an RFC filed as an issue on `ModelBound/mind-spec`.
+The spec version lives in `INDEX.md` frontmatter (`version: 0.2`). Minor versions are additive. Major versions require an RFC filed as an issue on `ModelBound/mind-spec`.
 
 ## 9. Security considerations
 
@@ -158,12 +159,102 @@ The spec version lives in `INDEX.md` frontmatter (`version: 0.1`). Minor version
 - Treat content fetched from URLs (`source: import:<url>`) as untrusted until reviewed.
 - Never commit secrets to `.mind/` — use `.env` and reference by name only.
 
-## 10. Reference implementations
+## 10. Scope constraints (anti-slop)
+
+Every skill in `.mind/skills/` SHOULD include explicit task-scope limits so agents stop before exceeding a single context window of work.
+
+### 10.1 Default limits
+
+Override repo-wide defaults in `.modelbound/task-budgets.json`:
+
+```json
+{
+  "files": { "max": 5 },
+  "loc": { "max": 250 },
+  "features": { "max": 1 }
+}
+```
+
+### 10.2 Required block
+
+New skills created by reference tooling include this block by default:
+
+```markdown
+## Scope Constraints (hard limits — split task if exceeded)
+
+- **Max files per task:** 5
+- **Max lines of code changed per task:** 250
+- **Max features per task:** 1
+
+If any of these would be exceeded, STOP and produce a split plan instead of writing code:
+
+<task-split>
+  <reason>Why this exceeds scope</reason>
+  <subtasks>
+    <task name="..." files="..." exit-criteria="..." />
+  </subtasks>
+</task-split>
+```
+
+When an agent would exceed any limit, it MUST emit `<task-split>` and MUST NOT write code until the human approves a smaller subtask.
+
+### 10.3 Trust scanner
+
+The offline trust scanner (version **h5**) penalizes skills missing scope limits, unbounded wording, unapproved dependency installs, and unbounded refactor instructions. See `ModelBound/mind-cli` and `ModelBound/modelbound-mcp-server`.
+
+## 11. Skill review lifecycle
+
+Skills support a local-first review state stored in YAML frontmatter:
+
+```yaml
+review:
+  state: draft | pending_review | approved | rejected
+  reviewed_by: alice
+  reviewed_at: 2026-08-29T12:00:00.000Z
+  approved_hash: <sha256 of body at approval>
+  approved_trust: 92
+  scanner_version: h5
+  notes: optional reviewer notes
+```
+
+Rules:
+
+- **draft** — default for new or edited skills.
+- **pending_review** — author requested review (`mind review request <path>`).
+- **approved** — reviewer signed off; `approved_hash` captures the body snapshot.
+- **rejected** — reviewer declined with optional `notes`.
+
+If an approved skill's body changes, effective state becomes **draft** (hash mismatch). CI SHOULD run `mind review gate <path>` to block merges of unapproved skills.
+
+### 11.1 Served payloads
+
+When a skill is loaded via MCP or CLI, implementations MUST include:
+
+| Field | Meaning |
+|-------|---------|
+| `version` | Skill version from frontmatter |
+| `trust_score` | 0–100 heuristic score |
+| `scanner_version` | Trust scanner version (e.g. `h5`) |
+| `review_state` | Effective review state |
+| `review_meta` | Reviewer, timestamps, approved hash/trust |
+
+### 11.2 Confidence history
+
+Each trust/pipeline run MAY append to `.modelbound/skill-history/<skill-slug>.jsonl`:
+
+```json
+{"ts":"2026-08-29T12:00:00.000Z","trust":88,"tests_passed":3,"tests_total":3,"scanner_version":"h5"}
+```
+
+`mind status` and `mind skill-trust` report pass rate and trust trend (↑/↓/→) versus the previous run.
+
+## 12. Reference implementations
 
 - [`ModelBound/mind-cli`](https://github.com/ModelBound/mind-cli) — command-line tools.
 - [`ModelBound/mind-mcp`](https://github.com/ModelBound/mind-mcp) — MCP server exposing `mind_read`, `mind_route`, `mind_propose_write`, `mind_recall`.
 - [`ModelBound/mind-examples`](https://github.com/ModelBound/mind-examples) — starter `.mind/` folders.
 
-## 11. Changelog
+## 13. Changelog
 
+- **0.2** (2026-08-29) — Scope constraints, `<task-split>` stop condition, skill review lifecycle, trust scanner h5, confidence history.
 - **0.1** (2026-07-07) — Initial public draft.
